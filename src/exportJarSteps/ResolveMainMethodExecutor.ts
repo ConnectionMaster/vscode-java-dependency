@@ -35,7 +35,7 @@ export class ResolveMainMethodExecutor implements IExportJarStepExecutor {
                 token.onCancellationRequested(() => {
                     return reject();
                 });
-                resolve(await Jdtls.getMainMethod(stepMetadata.workspaceUri.toString()));
+                resolve(await Jdtls.getMainMethod(stepMetadata.workspaceFolder.uri.toString()));
             });
         });
         if (mainMethods === undefined || mainMethods.length === 0) {

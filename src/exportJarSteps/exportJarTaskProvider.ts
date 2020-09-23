@@ -1,7 +1,8 @@
+import { pathExistsSync } from "fs-extra";
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-import { extname } from "path";
+import { extname, join } from "path";
 import {
     CustomExecution, Event, EventEmitter, Extension, extensions,
     Pseudoterminal, Task, TaskDefinition, TaskProvider, TaskScope,
@@ -12,34 +13,26 @@ import { createJarFile, ExportJarStep } from "../exportJarFileCommand";
 import { isStandardServerReady } from "../extension";
 import { Jdtls } from "../java/jdtls";
 import { INodeData } from "../java/nodeData";
+import { WorkspaceNode } from "../views/workspaceNode";
 import { IClasspathResult } from "./GenerateJarExecutor";
 import { IStepMetadata } from "./IStepMetadata";
+import { SETTING_BROWSE } from "./utility";
 
 export class ExportJarTaskProvider implements TaskProvider {
 
     public static exportJarType: string = "exportjar";
 
-    public static getDefaultTask(): Task {
-        return ExportJarTaskProvider.defaultTask;
-    }
-
-    public static setDefaultTaskEntry(node?: INodeData): void {
-        if (ExportJarTaskProvider.defaultTask.definition instanceof ExportJarTaskDefinition) {
-            ExportJarTaskProvider.defaultTask.definition.entry = node;
-        }
-    }
-
-    private static defaultTask: Task = ExportJarTaskProvider.initDefaultTask();
-
-    private static initDefaultTask(): Task {
-        const defaultDefinition: ExportJarTaskDefinition = {
+    public static getTask(stepMetadata: IStepMetadata): Task {
+        const targetPathSetting: string = workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder");
+        const defaultDefinition: IExportJarTaskDefinition = {
             type: ExportJarTaskProvider.exportJarType,
+            targetPath: targetPathSetting,
             elements: [],
-            steps: [],
+            manifest: "",
         };
-        return new Task(defaultDefinition, TaskScope.Workspace, "export", ExportJarTaskProvider.exportJarType,
-            new CustomExecution(async (): Promise<Pseudoterminal> => {
-                return new ExportJarTaskTerminal(defaultDefinition);
+        return new Task(defaultDefinition, stepMetadata.workspaceFolder, "export", ExportJarTaskProvider.exportJarType,
+            new CustomExecution(async (resolvedDefinition: TaskDefinition): Promise<Pseudoterminal> => {
+                return new ExportJarTaskTerminal(resolvedDefinition, stepMetadata);
             }));
     }
 
@@ -50,9 +43,8 @@ export class ExportJarTaskProvider implements TaskProvider {
     }
 
     public resolveTask(task: Task): Task | undefined {
-        const definition: ExportJarTaskDefinition = <any>task.definition;
-        return this.getTask(definition.workspacePath, definition.workSpace, definition.elements,
-            definition.projectList, definition.manifest, definition);
+        const definition: IExportJarTaskDefinition = <any>task.definition;
+        return undefined;
     }
 
     private async getTasks(): Promise<Task[]> {
@@ -113,22 +105,23 @@ export class ExportJarTaskProvider implements TaskProvider {
             if (test) {
                 outputList.push("Test Dependencies");
             }
-            const defaultDefinition: ExportJarTaskDefinition = {
+            const defaultDefinition: IExportJarTaskDefinition = {
                 type: ExportJarTaskProvider.exportJarType,
                 elements: outputList,
                 workspacePath: folder.uri.fsPath,
+                outputPath: "test",
             };
             this.tasks.push(new Task(defaultDefinition, folder, folder.name,
                 ExportJarTaskProvider.exportJarType, new CustomExecution(async (): Promise<Pseudoterminal> => {
-                    return new ExportJarTaskTerminal(defaultDefinition);
+                    return new ExportJarTaskTerminal(defaultDefinition, undefined);
                 })));
         }
         return this.tasks;
     }
 
     private getTask(workspacePath: string, workSpace: Uri, elements: string[], projectList: INodeData[],
-        manifest: string, definition?: ExportJarTaskDefinition): Task {
-        if (definition === undefined) {
+        manifest: string, definition?: IExportJarTaskDefinition): Task {
+        /*if (definition === undefined) {
             definition = {
                 type: ExportJarTaskProvider.exportJarType,
                 workspacePath,
@@ -137,26 +130,19 @@ export class ExportJarTaskProvider implements TaskProvider {
                 projectList,
                 manifest,
             };
-        }
+        }*/
         return new Task(definition, TaskScope.Workspace, workspacePath,
             ExportJarTaskProvider.exportJarType, new CustomExecution(async (): Promise<Pseudoterminal> => {
-                return new ExportJarTaskTerminal(definition);
+                return new ExportJarTaskTerminal(definition, undefined);
             }));
     }
 
 }
 
-class ExportJarTaskDefinition implements TaskDefinition {
-    [name: string]: any;
-    public type: string;
-    public entry?: INodeData;
-    public workSpace?: Uri;
-    public elements?: string[];
-    public projectList?: INodeData[];
-    public selectedMainMethod?: string;
-    public manifest?: string;
-    public outputPath?: string;
-    public steps?: ExportJarStep[];
+interface IExportJarTaskDefinition extends TaskDefinition {
+    elements?: string[];
+    manifest?: string;
+    targetPath?: string;
 }
 
 class ExportJarTaskTerminal implements Pseudoterminal {
@@ -167,26 +153,31 @@ class ExportJarTaskTerminal implements Pseudoterminal {
     public onDidWrite: Event<string> = this.writeEmitter.event;
     public onDidClose?: Event<void> = this.closeEmitter.event;
 
-    private exportJarTaskDefinition: ExportJarTaskDefinition;
+    private exportJarTaskDefinition: IExportJarTaskDefinition;
+    private stepMetadata: IStepMetadata;
 
-    constructor(exportJarTaskDefinition: ExportJarTaskDefinition) {
+    constructor(exportJarTaskDefinition: IExportJarTaskDefinition, stepMetadata: IStepMetadata) {
         this.exportJarTaskDefinition = exportJarTaskDefinition;
+        this.stepMetadata = stepMetadata;
     }
 
     public async open(initialDimensions: TerminalDimensions | undefined): Promise<void> {
         const stepMetadata: IStepMetadata = {
-            entry: this.exportJarTaskDefinition.entry,
-            workspaceUri: this.exportJarTaskDefinition.workSpace,
+            entry: this.stepMetadata.entry,
+            workspaceFolder: this.stepMetadata.workspaceFolder,
+            projectList: this.stepMetadata.projectList,
+            outputPath: this.exportJarTaskDefinition.targetPath,
+            selectedMainMethod: "",
             elements: this.exportJarTaskDefinition.elements,
-            projectList: this.exportJarTaskDefinition.projectList,
             manifestPath: this.exportJarTaskDefinition.manifest,
-            steps: this.exportJarTaskDefinition.steps,
-            outputPath: this.exportJarTaskDefinition.outputPath,
+            steps: this.stepMetadata.steps,
         };
-        createJarFile(stepMetadata);
+        await createJarFile(stepMetadata);
+        this.closeEmitter.fire();
     }
 
     public close(): void {
+
     }
 
 }

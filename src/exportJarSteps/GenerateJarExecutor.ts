@@ -3,13 +3,14 @@
 
 import { pathExists, pathExistsSync } from "fs-extra";
 import * as _ from "lodash";
-import { basename, extname, join } from "path";
+import isValid = require("is-valid-path");
+import { basename, dirname, extname, join, normalize } from "path";
 import { Disposable, Extension, extensions, ProgressLocation, QuickInputButtons, QuickPickItem, Uri, window, workspace } from "vscode";
 import { ExportJarStep } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";
 import { IExportJarStepExecutor } from "./IExportJarStepExecutor";
 import { IStepMetadata } from "./IStepMetadata";
-import { createPickBox, ErrorWithHandler, IMessageOption, saveDialog } from "./utility";
+import { createPickBox, ErrorWithHandler, IMessageOption, saveDialog, SETTING_BROWSE } from "./utility";
 
 export class GenerateJarExecutor implements IExportJarStepExecutor {
 
@@ -37,17 +38,16 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
                 token.onCancellationRequested(() => {
                     return reject();
                 });
-                const setting: string = workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder");
+                stepMetadata.outputPath = normalize(stepMetadata.outputPath);
                 let destPath = "";
-                // tslint:disable-next-line: no-invalid-template-strings
-                if (setting === "${workspaceFolder}") {
-                    destPath = join(stepMetadata.workspaceUri.fsPath, basename(stepMetadata.workspaceUri.fsPath) + ".jar");
-                } else if (setting === "Browse...") {
-                    const outputUri: Uri = await saveDialog(stepMetadata.workspaceUri, "Generate");
+                if (stepMetadata.outputPath === SETTING_BROWSE) {
+                    const outputUri: Uri = await saveDialog(stepMetadata.workspaceFolder.uri, "Generate");
                     if (outputUri === undefined) {
                         return reject();
                     }
                     destPath = outputUri.fsPath;
+                } else if (isValid(stepMetadata.outputPath) && pathExistsSync(dirname(stepMetadata.outputPath))) {
+                    destPath = stepMetadata.outputPath;
                 } else {
                     const option: IMessageOption = {
                         title: "Edit in settings.json",
@@ -82,11 +82,11 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
                 const uriSet: Set<string> = new Set<string>();
                 for (const rootNode of stepMetadata.projectList) {
                     const classPaths: IClasspathResult = await extensionApi.getClasspaths(rootNode.uri, { scope: "runtime" });
-                    pickItems.push(...await this.parseDependencyItems(classPaths.classpaths, uriSet, stepMetadata.workspaceUri.fsPath, true),
-                        ...await this.parseDependencyItems(classPaths.modulepaths, uriSet, stepMetadata.workspaceUri.fsPath, true));
+                    pickItems.push(...await this.parseDependencyItems(classPaths.classpaths, uriSet, stepMetadata.workspaceFolder.uri.fsPath, true),
+                        ...await this.parseDependencyItems(classPaths.modulepaths, uriSet, stepMetadata.workspaceFolder.uri.fsPath, true));
                     const classPathsTest: IClasspathResult = await extensionApi.getClasspaths(rootNode.uri, { scope: "test" });
-                    pickItems.push(...await this.parseDependencyItems(classPathsTest.classpaths, uriSet, stepMetadata.workspaceUri.fsPath, false),
-                        ...await this.parseDependencyItems(classPathsTest.modulepaths, uriSet, stepMetadata.workspaceUri.fsPath, false));
+                    pickItems.push(...await this.parseDependencyItems(classPathsTest.classpaths, uriSet, stepMetadata.workspaceFolder.uri.fsPath, false),
+                        ...await this.parseDependencyItems(classPathsTest.modulepaths, uriSet, stepMetadata.workspaceFolder.uri.fsPath, false));
                 }
                 return resolve(pickItems);
             });
