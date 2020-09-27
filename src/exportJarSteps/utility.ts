@@ -5,7 +5,7 @@ import { EOL, platform } from "os";
 import { commands, QuickInputButtons, QuickPick, QuickPickItem, SaveDialogOptions, Uri, window } from "vscode";
 import { sendOperationError } from "vscode-extension-telemetry-wrapper";
 
-export const SETTING_BROWSE: string = "Browse...";
+export const SETTING_ASKUSER: string = "Browse...";
 
 export function createPickBox<T extends QuickPickItem>(title: string, placeholder: string, items: T[],
                                                        backBtnEnabled: boolean, canSelectMany: boolean = false): QuickPick<T> {

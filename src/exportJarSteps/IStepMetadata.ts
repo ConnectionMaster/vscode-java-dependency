@@ -11,7 +11,9 @@ export interface IStepMetadata {
     projectList?: INodeData[];
     selectedMainMethod?: string;
     elements: string[];
+    dependencies: string[];
     outputPath?: string;
     manifestPath?: string;
     steps: ExportJarStep[];
+    backToProjectStep: boolean;
 }

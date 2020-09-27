@@ -27,8 +27,10 @@ export namespace Jdtls {
         return commands.executeCommand(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.JAVA_PROJECT_GETMAINMETHOD, params);
     }
 
-    export function exportJar(mainMethod: string, elements: string[], destination: string): Thenable<boolean> {
-        return commands.executeCommand(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.JAVA_PROJECT_GENERATEJAR, mainMethod, elements, destination);
+    export function exportJar(mainMethod: string, elements: string[], dependencies: string[],
+                              destination: string, manifestPath: string): Thenable<boolean> {
+        return commands.executeCommand(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.JAVA_PROJECT_GENERATEJAR,
+            mainMethod, elements, dependencies, destination, manifestPath);
     }
 
     export enum CompileWorkspaceStatus {

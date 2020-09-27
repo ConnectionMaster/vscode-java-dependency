@@ -12,6 +12,7 @@
 package com.microsoft.jdtls.ext.core;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,6 +36,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.search.IJavaSearchScope;
 import org.eclipse.jdt.core.search.SearchEngine;
@@ -129,31 +131,57 @@ public final class ProjectCommand {
     }
 
     public static boolean exportJar(List<Object> arguments, IProgressMonitor monitor) {
-        if (arguments.size() < 3) {
+        if (arguments.size() < 5) {
             return false;
         }
         String mainMethod = gson.fromJson(gson.toJson(arguments.get(0)), String.class);
         String[] classpaths = gson.fromJson(gson.toJson(arguments.get(1)), String[].class);
-        String destination = gson.fromJson(gson.toJson(arguments.get(2)), String.class);
-        Manifest manifest = new Manifest();
-        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        if (mainMethod.length() > 0) {
-            manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS,mainMethod);
+        String[] dependencies = gson.fromJson(gson.toJson(arguments.get(2)), String[].class);
+        String destination = gson.fromJson(gson.toJson(arguments.get(3)), String.class);
+        String manifestPath = "";
+        if (arguments.size() == 4) {
+            manifestPath = gson.fromJson(gson.toJson(arguments.get(4)), String.class);
         }
-        try (JarOutputStream target = new JarOutputStream(new FileOutputStream(destination), manifest)) {
+        try {
+            Manifest manifest;
+            if (StringUtils.isEmpty(manifestPath)) {
+                manifest = new Manifest();
+                manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+                if (mainMethod.length() > 0) {
+                    manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS,mainMethod);
+                }
+            } else {
+                manifest = new Manifest(new FileInputStream(new File(manifestPath)));
+            }
+            JarOutputStream target = new JarOutputStream(new FileOutputStream(destination), manifest);
             Set<String> fDirectories = new HashSet<>();
-            for (String classpath : classpaths) {
-                if (classpath != null) {
-                    if(classpath.endsWith(".jar")) {
-                        ZipFile zip = new ZipFile(classpath);
+            for (String dependency : dependencies) {
+                if (StringUtils.isNotEmpty(dependency)) {
+                    File file = new File(dependency);
+                    if (!file.exists()) {
+                        continue;
+                    }
+                    if(dependency.endsWith(".jar")) {
+                        ZipFile zip = new ZipFile(dependency);
                         writeArchive(zip, true, true, target, fDirectories, monitor);
                     }
-                    else {
+                }
+            }
+            for (String classpath : classpaths) {
+                if (StringUtils.isNotEmpty(classpath)) {
+                    File file = new File(classpath);
+                    if (!file.exists()) {
+                        continue;
+                    }
+                    if (file.isFile()) {
+                        // todo
+                    } else {
                         File folder = new File(classpath);
                         writeFileRecursively(folder, target, fDirectories, folder.getAbsolutePath().length() + 1);
                     }
                 }
             }
+            target.close();
         } catch (Exception e) {
             return false;
         }

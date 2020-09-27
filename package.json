@@ -177,7 +177,7 @@
           "type": "string",
           "enum": [
             "${workspaceFolder}/${workspaceFolderBasename}.jar",
-            "Browse..."
+            "askUser"
           ],
           "description": "Specific the default output folder of export jar.",
           "default": "${workspaceFolder}/${workspaceFolderBasename}.jar"

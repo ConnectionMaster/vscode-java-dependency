@@ -1,3 +1,5 @@
+import { last } from "lodash";
+import _ = require("lodash");
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
@@ -19,10 +21,14 @@ export class ResolveMainMethodExecutor implements IExportJarStepExecutor {
     }
 
     public async execute(stepMetadata: IStepMetadata): Promise<ExportJarStep> {
-        if (await this.resolveMainMethod(stepMetadata)) {
+        if (await this.resolveMainMethod(stepMetadata) || !_.isEmpty(stepMetadata.manifestPath)) {
             return this.getNextStep();
         }
-        return stepMetadata.steps.pop();
+        const lastStep: ExportJarStep = stepMetadata.steps.pop();
+        if (lastStep === ExportJarStep.ResolveJavaProject) {
+            stepMetadata.backToProjectStep = true;
+        }
+        return lastStep;
     }
 
     private async resolveMainMethod(stepMetadata: IStepMetadata): Promise<boolean> {

@@ -33,23 +33,30 @@ export async function createJarFileEntry(node?: INodeData) {
 }
 
 export async function ResolveJavaProject(node?: INodeData) {
-    if (!isStandardServerReady() || await buildWorkspace() === false) {
-        return;
+    let sign: boolean = true;
+    while (sign) {
+        if (!isStandardServerReady() || await buildWorkspace() === false) {
+            return;
+        }
+        if (isExportingJar) {
+            failMessage("running");
+            return;
+        }
+        isExportingJar = true;
+        // specific workspace
+        const step: ExportJarStep = ExportJarStep.ResolveJavaProject;
+        const stepMetadata: IStepMetadata = {
+            entry: node,
+            elements: [],
+            dependencies: [],
+            steps: [],
+            backToProjectStep: false,
+        };
+        await stepMap.get(step).execute(stepMetadata);
+        await tasks.executeTask(ExportJarTaskProvider.getTask(stepMetadata)); // async
+        sign = stepMetadata.backToProjectStep;
+        isExportingJar = false;
     }
-    if (isExportingJar) {
-        failMessage("running");
-        return;
-    }
-    isExportingJar = true;
-    // specific workspace
-    const step: ExportJarStep = ExportJarStep.ResolveJavaProject;
-    const stepMetadata: IStepMetadata = {
-        entry: node,
-        elements: [],
-        steps: [],
-    };
-    await stepMap.get(step).execute(stepMetadata);
-    await tasks.executeTask(ExportJarTaskProvider.getTask(stepMetadata));
 }
 
 export async function createJarFile(stepMetadata: IStepMetadata) {
@@ -59,8 +66,7 @@ export async function createJarFile(stepMetadata: IStepMetadata) {
             try {
                 step = await stepMap.get(step).execute(stepMetadata);
                 if (step === ExportJarStep.ResolveJavaProject) {
-                    createJarFileEntry(stepMetadata.entry);
-                    return;
+                    return reject();
                 }
             } catch (err) {
                 return reject(err);
@@ -69,13 +75,11 @@ export async function createJarFile(stepMetadata: IStepMetadata) {
         return resolve(stepMetadata.outputPath);
     }).then((message) => {
         successMessage(message);
-        isExportingJar = false;
     }, (err) => {
         if (err instanceof ErrorWithHandler) {
             failMessage(err.message, err.handler);
         } else if (err) {
             failMessage(`${err}`);
         }
-        isExportingJar = false;
     });
 }
