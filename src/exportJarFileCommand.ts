@@ -43,12 +43,12 @@ export async function ResolveJavaProject(node?: INodeData) {
             return;
         }
         isExportingJar = true;
-        // specific workspace
         const step: ExportJarStep = ExportJarStep.ResolveJavaProject;
         const stepMetadata: IStepMetadata = {
             entry: node,
             elements: [],
             dependencies: [],
+            classpaths: [],
             steps: [],
             backToProjectStep: false,
         };

@@ -2,9 +2,11 @@
 // Licensed under the MIT license.
 
 import { pathExists, pathExistsSync } from "fs-extra";
+import glob = require("glob-all");
 import isValid = require("is-valid-path");
 import * as _ from "lodash";
-import { basename, dirname, extname, join, normalize } from "path";
+import { EOL } from "os";
+import { basename, dirname, extname, isAbsolute, join, normalize } from "path";
 import { Disposable, Extension, extensions, ProgressLocation, QuickInputButtons, QuickPickItem, Uri, window, workspace } from "vscode";
 import { ExportJarStep } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";
@@ -61,8 +63,9 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
                     };
                     return reject(new ErrorWithHandler("Invalid target folder. Please check it in settings.json.", option));
                 }
-                const exportResult = await Jdtls.exportJar(basename(stepMetadata.selectedMainMethod), stepMetadata.elements,
-                    stepMetadata.dependencies, destPath, stepMetadata.manifestPath);
+                stepMetadata.writeEmitter.fire("Generating jar..." + EOL);
+                const exportResult = await Jdtls.exportJar(basename(stepMetadata.mainMethod), stepMetadata.elements,
+                    stepMetadata.dependencies, stepMetadata.classpaths, destPath);
                 if (exportResult === true) {
                     stepMetadata.outputPath = destPath;
                     return resolve(true);
@@ -76,6 +79,7 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
     private async generateElements(stepMetadata: IStepMetadata): Promise<boolean> {
         const extension: Extension<any> | undefined = extensions.getExtension("redhat.java");
         const extensionApi: any = await extension?.activate();
+        stepMetadata.writeEmitter.fire("Resolving classpaths..." + EOL);
         const dependencyItems: IJarQuickPickItem[] = await window.withProgress({
             location: ProgressLocation.Window,
             title: "Exporting Jar : Resolving classpaths...",
@@ -135,11 +139,7 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
                     }),
                     pickBox.onDidAccept(() => {
                         for (const item of pickBox.selectedItems) {
-                            if (item.dependency) {
-                                stepMetadata.dependencies.push(item.path);
-                            } else {
-                                stepMetadata.elements.push(item.path);
-                            }
+                            stepMetadata.dependencies.push(item.path);
                         }
                         return resolve(true);
                     }),
@@ -177,7 +177,6 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
                     path: classpath,
                     type: typeValue,
                     picked: isRuntime,
-                    dependency: isDependency,
                 });
             }
         }
@@ -195,5 +194,4 @@ export interface IClasspathResult {
 interface IJarQuickPickItem extends QuickPickItem {
     path: string;
     type: string;
-    dependency: boolean;
 }

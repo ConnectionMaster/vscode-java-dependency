@@ -389,9 +389,9 @@
             "type": "array",
             "description": "The files of export jar task. Will dismiss the select elements step."
           },
-          "manifest": {
+          "mainMethod": {
             "type": "string",
-            "description": "The path of the manifest file in the target jar. Will dismiss the select main mathod step."
+            "description": "The main Method defined in the manifest of the target jar. Will dismiss the select main mathod step."
           },
           "targetPath": {
             "type": "string",
@@ -430,6 +430,7 @@
   },
   "dependencies": {
     "is-valid-path": "0.1.1",
+    "glob-all": "3.2.1",
     "fs-extra": "^7.0.1",
     "lodash": "^4.17.20",
     "minimatch": "^3.0.4",
