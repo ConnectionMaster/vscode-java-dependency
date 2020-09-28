@@ -1,18 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 import glob = require("glob-all");
+import globby = require("globby");
 import _ = require("lodash");
-import { extname, isAbsolute, join } from "path";
+import { extname, isAbsolute, join, normalize, posix } from "path";
+import * as upath from "upath";
 import {
-    CustomExecution, Event, EventEmitter, Extension, extensions,
-    Pseudoterminal, Task, TaskDefinition, TaskProvider,
-    TerminalDimensions, Uri, workspace, WorkspaceFolder,
+    CustomExecution, Event, EventEmitter, Extension, extensions, Pseudoterminal,
+    Task, TaskDefinition, TaskProvider, TaskRevealKind, TerminalDimensions, Uri, workspace, WorkspaceFolder,
 } from "vscode";
 import { createJarFile } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";
 import { INodeData } from "../java/nodeData";
 import { IClasspathResult } from "./GenerateJarExecutor";
 import { IStepMetadata } from "./IStepMetadata";
+import { COMPILE_OUTPUT, RUNTIME_DEPENDENCIES_VARIABLE, TEST_DEPENDENCIES_VARIABLE, TESTCOMPILE_OUTPUT } from "./utility";
 
 export class ExportJarTaskProvider implements TaskProvider {
 
@@ -26,35 +28,35 @@ export class ExportJarTaskProvider implements TaskProvider {
             elements: [],
             mainMethod: undefined,
         };
-        return new Task(defaultDefinition, stepMetadata.workspaceFolder, "export", ExportJarTaskProvider.exportJarType,
+        const task: Task = new Task(defaultDefinition, stepMetadata.workspaceFolder, "export", ExportJarTaskProvider.exportJarType,
             new CustomExecution(async (resolvedDefinition: TaskDefinition): Promise<Pseudoterminal> => {
                 return new ExportJarTaskTerminal(resolvedDefinition, stepMetadata);
             }));
+        task.presentationOptions.reveal = TaskRevealKind.Never;
+        return task;
     }
 
     private tasks: Task[] | undefined;
 
-    public async resolveTask(task: Task): Promise<Task> {
-        const definition: IExportJarTaskDefinition = <any>task.definition;
+    public async resolveTask(_task: Task): Promise<Task> {
+        const definition: IExportJarTaskDefinition = <any>_task.definition;
         let folder: WorkspaceFolder;
-        for (const subfolder of workspace.workspaceFolders) {
-            if (subfolder.uri.fsPath === definition.workspacePath) {
-                folder = subfolder;
+        for (const subFolder of workspace.workspaceFolders) {
+            if (subFolder.uri.fsPath === definition.workspacePath) {
+                folder = subFolder;
             }
         }
         const stepMetadata: IStepMetadata = {
             entry: undefined,
             workspaceFolder: folder,
-            elements: [],
-            dependencies: [],
-            classpaths: [],
             steps: [],
-            backToProjectStep: false,
         };
-        return new Task(definition, folder, definition.workspacePath, ExportJarTaskProvider.exportJarType,
+        const task: Task = new Task(definition, folder, definition.workspacePath, ExportJarTaskProvider.exportJarType,
             new CustomExecution(async (resolvedDefinition: TaskDefinition): Promise<Pseudoterminal> => {
                 return new ExportJarTaskTerminal(resolvedDefinition, stepMetadata);
             }));
+        task.presentationOptions.reveal = TaskRevealKind.Never;
+        return task;
     }
 
     public async provideTasks(): Promise<Task[]> {
@@ -62,41 +64,19 @@ export class ExportJarTaskProvider implements TaskProvider {
             return this.tasks;
         }
         this.tasks = [];
-        const extension: Extension<any> | undefined = extensions.getExtension("redhat.java");
-        const extensionApi: any = await extension?.activate();
         for (const folder of workspace.workspaceFolders) {
-            const projectPath: string = Uri.parse(folder.uri.toString()).fsPath;
             const projectList: INodeData[] = await Jdtls.getProjects(Uri.parse(folder.uri.toString()).toString());
-            const uriSet: Set<string> = new Set<string>();
             const outputList: string[] = [];
-            for (const project of projectList) {
-                const classPaths: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "runtime" });
-                for (let classpath of classPaths.classpaths) {
-                    if (extname(classpath) !== ".jar") {
-                        if (!uriSet.has(classpath)) {
-                            uriSet.add(classpath);
-                            if (Uri.parse(classpath).fsPath.startsWith(Uri.parse(projectPath).fsPath)) {
-                                classpath = classpath.substring(projectPath.length + 1);
-                            }
-                            outputList.push(join(classpath, "**"));
-                        }
-                    }
-                }
-                const testClassPaths: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "test" });
-                for (let classpath of testClassPaths.classpaths) {
-                    if (extname(classpath) !== ".jar") {
-                        if (!uriSet.has(classpath)) {
-                            uriSet.add(classpath);
-                            if (Uri.parse(classpath).fsPath.startsWith(Uri.parse(projectPath).fsPath)) {
-                                classpath = classpath.substring(projectPath.length + 1);
-                            }
-                            outputList.push(join(classpath, "**"));
-                        }
-                    }
+            if (_.isEmpty(projectList)) {
+                continue;
+            } else {
+                for (const project of projectList) {
+                    outputList.push("${" + COMPILE_OUTPUT + ":" + project.name + "}\\**");
+                    outputList.push("${" + TESTCOMPILE_OUTPUT + ":" + project.name + "}\\**");
                 }
             }
-            outputList.push("RuntimeDependencies");
-            outputList.push("TestDependencies");
+            outputList.push(RUNTIME_DEPENDENCIES_VARIABLE);
+            outputList.push(TEST_DEPENDENCIES_VARIABLE);
             const defaultDefinition: IExportJarTaskDefinition = {
                 type: ExportJarTaskProvider.exportJarType,
                 elements: outputList,
@@ -109,15 +89,11 @@ export class ExportJarTaskProvider implements TaskProvider {
                 entry: undefined,
                 workspaceFolder: folder,
                 projectList: await Jdtls.getProjects(folder.uri.toString()),
-                elements: [],
-                dependencies: [],
-                classpaths: [],
                 steps: [],
-                backToProjectStep: false,
             };
             this.tasks.push(new Task(defaultDefinition, folder, folder.name,
-                ExportJarTaskProvider.exportJarType, new CustomExecution(async (): Promise<Pseudoterminal> => {
-                    return new ExportJarTaskTerminal(defaultDefinition, stepMetadata);
+                ExportJarTaskProvider.exportJarType, new CustomExecution(async (resolvedDefinition: TaskDefinition): Promise<Pseudoterminal> => {
+                    return new ExportJarTaskTerminal(resolvedDefinition, stepMetadata);
                 })));
         }
         return this.tasks;
@@ -150,74 +126,79 @@ class ExportJarTaskTerminal implements Pseudoterminal {
     }
 
     public async open(initialDimensions: TerminalDimensions | undefined): Promise<void> {
-        const stepMetadata: IStepMetadata = {
-            entry: this.stepMetadata.entry,
-            workspaceFolder: this.stepMetadata.workspaceFolder,
-            projectList: this.stepMetadata.projectList,
-            outputPath: this.stepMetadata.outputPath,
-            mainMethod: this.stepMetadata.mainMethod,
-            elements: this.stepMetadata.elements,
-            dependencies: [],
-            classpaths: [],
-            steps: this.stepMetadata.steps,
-            backToProjectStep: false,
-            writeEmitter: this.writeEmitter,
-        };
-        if (_.isEmpty(stepMetadata.outputPath)) {
-            stepMetadata.outputPath = workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder");
+        if (_.isEmpty(this.stepMetadata.outputPath)) {
+            this.stepMetadata.outputPath = workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder");
         }
-        if (!_.isEmpty(stepMetadata.elements)) {
+        if (!_.isEmpty(this.stepMetadata.elements)) {
             const dependencies: string[] = [];
-            const elementsToGlob: string[] = [];
             const extension: Extension<any> | undefined = extensions.getExtension("redhat.java");
             const extensionApi: any = await extension?.activate();
-            const projectList: INodeData[] = await Jdtls.getProjects(Uri.parse(stepMetadata.workspaceFolder.uri.toString()).toString());
-            const uriSet: Set<string> = new Set<string>();
+            const projectList: INodeData[] = await Jdtls.getProjects(Uri.parse(this.stepMetadata.workspaceFolder.uri.toString()).toString());
             const runtimeDependencies: string[] = [];
             const testDependencies: string[] = [];
-            const classPaths: string[] = [];
+            const classPathMap: Map<string, string[]> = new Map<string, string[]>();
             for (const project of projectList) {
-                const classPathsRuntime: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "runtime" });
-                for (const classpath of classPathsRuntime.classpaths) {
-                    if (!uriSet.has(classpath)) {
-                        uriSet.add(classpath);
-                        if (extname(classpath) === ".jar") {
-                            runtimeDependencies.push(classpath);
-                        } else {
-                            classPaths.push(classpath);
-                        }
+                const classPaths: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "runtime" });
+                const classPathsResolved: string[] = [];
+                for (const classpath of classPaths.classpaths) {
+                    if (extname(classpath) === ".jar") {
+                        runtimeDependencies.push(classpath);
+                    } else {
+                        classPathsResolved.push(classpath);
                     }
                 }
-                const classPathsTest: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "test" });
-                for (const classpath of classPathsTest.classpaths) {
-                    if (!uriSet.has(classpath)) {
-                        uriSet.add(classpath);
-                        if (extname(classpath) === ".jar") {
-                            testDependencies.push(classpath);
-                        } else {
-                            classPaths.push(classpath);
-                        }
+                for (const classpath of classPaths.modulepaths) {
+                    if (extname(classpath) === ".jar") {
+                        runtimeDependencies.push(classpath);
+                    } else {
+                        classPathsResolved.push(classpath);
                     }
                 }
+                classPathMap.set("${" + COMPILE_OUTPUT + ":" + project.name + "}", classPathsResolved);
+                const testClassPaths: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "test" });
+                const testClassPathsResolved: string[] = [];
+                for (const classpath of testClassPaths.classpaths) {
+                    if (extname(classpath) === ".jar") {
+                        testDependencies.push(classpath);
+                    } else {
+                        testClassPathsResolved.push(classpath);
+                    }
+                }
+                for (const classpath of testClassPaths.modulepaths) {
+                    if (extname(classpath) === ".jar") {
+                        testDependencies.push(classpath);
+                    } else {
+                        testClassPathsResolved.push(classpath);
+                    }
+                }
+                classPathMap.set("${" + TESTCOMPILE_OUTPUT + ":" + project.name + "}", testClassPathsResolved);
             }
-            for (const element of stepMetadata.elements) {
-                if (element === "RuntimeDependencies") {
+            const classPathArray: string[] = [];
+            for (const element of this.stepMetadata.elements) {
+                if (element === RUNTIME_DEPENDENCIES_VARIABLE) {
                     for (const dependency of runtimeDependencies) {
-                        dependencies.push(dependency);
+                        dependencies.push(upath.normalizeSafe(dependency));
                     }
-                } else if (element === "TestDependencies") {
+                } else if (element === TEST_DEPENDENCIES_VARIABLE) {
                     for (const dependency of testDependencies) {
-                        dependencies.push(dependency);
+                        dependencies.push(upath.normalizeSafe(dependency));
                     }
                 } else {
-                    this.addToArray(elementsToGlob, element);
+                    for (const key of classPathMap.keys()) {
+                        if (element.includes(key)) {
+                            for (const value of classPathMap.get(key)) {
+                                classPathArray.push(upath.normalizeSafe(this.toAbsolute(element.replace(key, value))));
+                            }
+                        }
+                    }
+                    classPathArray.push(upath.normalizeSafe(this.toAbsolute(element)));
                 }
             }
-            stepMetadata.elements = glob.sync(elementsToGlob);
-            stepMetadata.dependencies = dependencies;
-            //stepMetadata.classpaths = classPaths;
+            this.stepMetadata.elements = await globby(classPathArray);
+            this.stepMetadata.dependencies = await globby(dependencies);
+            const test = 1;
         }
-        await createJarFile(stepMetadata);
+        await createJarFile(this.stepMetadata);
         this.closeEmitter.fire();
     }
 
@@ -225,21 +206,18 @@ class ExportJarTaskTerminal implements Pseudoterminal {
 
     }
 
-    private addToArray(array: string[], path: string): void {
+    private toAbsolute(path: string): string {
         if (path.length > 0 && path[0] === "!") {
             const realPath = path.substring(1);
-            if (isAbsolute(realPath)) {
-                array.push("!" + realPath);
-            } else {
-                array.push("!" + join(this.stepMetadata.workspaceFolder.uri.fsPath, realPath));
+            if (!isAbsolute(realPath)) {
+                return "!" + join(this.stepMetadata.workspaceFolder.uri.fsPath, realPath);
             }
         } else {
-            if (isAbsolute(path)) {
-                array.push(path);
-            } else {
-                array.push(join(this.stepMetadata.workspaceFolder.uri.fsPath, path));
+            if (!isAbsolute(path)) {
+                return join(this.stepMetadata.workspaceFolder.uri.fsPath, path);
             }
         }
+        return path;
     }
 
 }

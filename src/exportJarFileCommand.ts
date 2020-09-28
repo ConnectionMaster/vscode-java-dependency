@@ -3,7 +3,7 @@ import { commands, tasks } from "vscode";
 // Licensed under the MIT license.
 
 import { buildWorkspace } from "./build";
-import { ExportJarTaskProvider } from "./exportJarSteps/exportJarTaskProvider";
+import { ExportJarTaskProvider } from "./exportJarSteps/ExportJarTaskProvider";
 import { GenerateJarExecutor } from "./exportJarSteps/GenerateJarExecutor";
 import { IExportJarStepExecutor } from "./exportJarSteps/IExportJarStepExecutor";
 import { IStepMetadata } from "./exportJarSteps/IStepMetadata";
@@ -28,35 +28,38 @@ const stepMap: Map<ExportJarStep, IExportJarStepExecutor> = new Map<ExportJarSte
 
 let isExportingJar: boolean = false;
 
-export async function createJarFileEntry(node?: INodeData) {
-    ResolveJavaProject(node);
-}
-
-export async function ResolveJavaProject(node?: INodeData) {
-    let sign: boolean = true;
-    while (sign) {
-        if (!isStandardServerReady() || await buildWorkspace() === false) {
-            return;
-        }
-        if (isExportingJar) {
-            failMessage("running");
-            return;
-        }
-        isExportingJar = true;
-        const step: ExportJarStep = ExportJarStep.ResolveJavaProject;
-        const stepMetadata: IStepMetadata = {
-            entry: node,
-            elements: [],
-            dependencies: [],
-            classpaths: [],
-            steps: [],
-            backToProjectStep: false,
-        };
-        await stepMap.get(step).execute(stepMetadata);
-        await tasks.executeTask(ExportJarTaskProvider.getTask(stepMetadata)); // async
-        sign = stepMetadata.backToProjectStep;
-        isExportingJar = false;
+export async function createJarFileEntry(node?: INodeData): Promise<boolean> {
+    if (!isStandardServerReady() || await buildWorkspace() === false || isExportingJar) {
+        return;
     }
+    isExportingJar = true;
+    const step: ExportJarStep = ExportJarStep.ResolveJavaProject;
+    const stepMetadata: IStepMetadata = {
+        entry: node,
+        steps: [],
+    };
+    try {
+        await stepMap.get(step).execute(stepMetadata);
+    } catch (err) {
+        isExportingJar = false;
+        if (err) {
+            failMessage(`${err}`);
+        }
+        return true;
+    }
+    tasks.executeTask(ExportJarTaskProvider.getTask(stepMetadata)); // async
+    return new Promise<boolean>((resolve, reject) => {
+        tasks.onDidEndTask((e) => {
+            if (e.execution.task.source === ExportJarTaskProvider.exportJarType) {
+                isExportingJar = false;
+                if (stepMetadata.workspaceFolder === undefined) {
+                    resolve(false);
+                } else {
+                    resolve(true);
+                }
+            }
+        });
+    });
 }
 
 export async function createJarFile(stepMetadata: IStepMetadata) {

@@ -133,14 +133,13 @@ public final class ProjectCommand {
     }
 
     public static boolean exportJar(List<Object> arguments, IProgressMonitor monitor) {
-        if (arguments.size() < 5) {
+        if (arguments.size() < 4) {
             return false;
         }
         String mainMethod = gson.fromJson(gson.toJson(arguments.get(0)), String.class);
         String[] elements = gson.fromJson(gson.toJson(arguments.get(1)), String[].class);
         String[] dependencies = gson.fromJson(gson.toJson(arguments.get(2)), String[].class);
-        ClassPath[] classpaths = gson.fromJson(gson.toJson(arguments.get(3)), ClassPath[].class);
-        String destination = gson.fromJson(gson.toJson(arguments.get(4)), String.class);
+        String destination = gson.fromJson(gson.toJson(arguments.get(3)), String.class);
         try {
             Manifest manifest = new Manifest();
             manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");

@@ -1,11 +1,18 @@
-import { EOL, platform } from "os";
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
+import { EOL, platform } from "os";
 import { commands, QuickInputButtons, QuickPick, QuickPickItem, SaveDialogOptions, Uri, window } from "vscode";
 import { sendOperationError } from "vscode-extension-telemetry-wrapper";
+import { ExportJarStep } from "../exportJarFileCommand";
+import { IStepMetadata } from "./IStepMetadata";
 
-export const SETTING_ASKUSER: string = "Browse...";
+export const SETTING_ASKUSER: string = "askUser";
+// tslint:disable: no-invalid-template-strings
+export const RUNTIME_DEPENDENCIES_VARIABLE: string = "${RuntimeDependencies}";
+export const TEST_DEPENDENCIES_VARIABLE: string = "${TestDependencies}";
+export const COMPILE_OUTPUT: string = "CompileOutput";
+export const TESTCOMPILE_OUTPUT: string = "TestCompileOutput";
 
 export function createPickBox<T extends QuickPickItem>(title: string, placeholder: string, items: T[],
                                                        backBtnEnabled: boolean, canSelectMany: boolean = false): QuickPick<T> {
@@ -28,6 +35,15 @@ export async function saveDialog(workSpaceUri: Uri, title: string): Promise<Uri>
         },
     };
     return Promise.resolve(await window.showSaveDialog(options));
+}
+
+export function cleanLastStepData(lastStep: ExportJarStep, stepMetadata: IStepMetadata): void {
+    if (lastStep === ExportJarStep.ResolveJavaProject) {
+        stepMetadata.workspaceFolder = undefined;
+        stepMetadata.projectList = undefined;
+    } else if (lastStep === ExportJarStep.ResolveMainMethod) {
+        stepMetadata.mainMethod = undefined;
+    }
 }
 
 export interface IMessageOption {

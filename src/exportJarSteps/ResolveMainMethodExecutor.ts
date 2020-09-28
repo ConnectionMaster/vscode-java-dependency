@@ -7,7 +7,7 @@ import { ExportJarStep } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";
 import { IExportJarStepExecutor } from "./IExportJarStepExecutor";
 import { IStepMetadata } from "./IStepMetadata";
-import { createPickBox } from "./utility";
+import { cleanLastStepData, createPickBox } from "./utility";
 
 export class ResolveMainMethodExecutor implements IExportJarStepExecutor {
 
@@ -26,13 +26,8 @@ export class ResolveMainMethodExecutor implements IExportJarStepExecutor {
         if (await this.resolveMainMethod(stepMetadata)) {
             return this.getNextStep();
         }
-        if (!_.isEmpty(stepMetadata.mainMethod) || await this.resolveMainMethod(stepMetadata)) {
-            return this.getNextStep();
-        }
         const lastStep: ExportJarStep = stepMetadata.steps.pop();
-        if (lastStep === ExportJarStep.ResolveJavaProject) {
-            stepMetadata.backToProjectStep = true;
-        }
+        cleanLastStepData(lastStep, stepMetadata);
         return lastStep;
     }
 
@@ -49,7 +44,6 @@ export class ResolveMainMethodExecutor implements IExportJarStepExecutor {
                 resolve(await Jdtls.getMainMethod(stepMetadata.workspaceFolder.uri.toString()));
             });
         });
-        stepMetadata.writeEmitter.fire("Resolving main classes..." + EOL);
         if (mainMethods === undefined || mainMethods.length === 0) {
             stepMetadata.mainMethod = "";
             return true;
@@ -68,7 +62,6 @@ export class ResolveMainMethodExecutor implements IExportJarStepExecutor {
         pickItems.push(noMainClassItem);
         const disposables: Disposable[] = [];
         let result: boolean = false;
-        stepMetadata.writeEmitter.fire("Selecting main classes..." + EOL);
         try {
             result = await new Promise<boolean>(async (resolve, reject) => {
                 const pickBox = createPickBox<QuickPickItem>("Export Jar : Determine main class", "Select the main class",

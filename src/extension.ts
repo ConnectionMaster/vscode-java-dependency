@@ -9,7 +9,7 @@ import { contextManager } from "./contextManager";
 import { LibraryController } from "./controllers/libraryController";
 import { ProjectController } from "./controllers/projectController";
 import { init as initExpService } from "./ExperimentationService";
-import { ExportJarTaskProvider } from "./exportJarSteps/exportJarTaskProvider";
+import { ExportJarTaskProvider } from "./exportJarSteps/ExportJarTaskProvider";
 import { Settings } from "./settings";
 import { syncHandler } from "./syncHandler";
 import { DependencyExplorer } from "./views/dependencyExplorer";

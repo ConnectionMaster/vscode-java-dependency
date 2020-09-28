@@ -10,13 +10,10 @@ export interface IStepMetadata {
     workspaceFolder?: WorkspaceFolder;
     projectList?: INodeData[];
     mainMethod?: string;
-    elements: string[];
-    dependencies: string[];
-    classpaths: IClassPaths[];
+    elements?: string[];
+    dependencies?: string[];
     outputPath?: string;
     steps: ExportJarStep[];
-    writeEmitter?: EventEmitter<string>;
-    backToProjectStep: boolean;
 }
 
 export interface IClassPaths {
