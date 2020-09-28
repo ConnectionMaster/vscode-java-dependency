@@ -137,7 +137,7 @@ public final class ProjectCommand {
             return false;
         }
         String mainMethod = gson.fromJson(gson.toJson(arguments.get(0)), String.class);
-        String[] elements = gson.fromJson(gson.toJson(arguments.get(1)), String[].class);
+        ClassPath[] sources = gson.fromJson(gson.toJson(arguments.get(1)), ClassPath[].class);
         String[] dependencies = gson.fromJson(gson.toJson(arguments.get(2)), String[].class);
         String destination = gson.fromJson(gson.toJson(arguments.get(3)), String.class);
         try {
@@ -162,18 +162,12 @@ public final class ProjectCommand {
                     }
                 }
             }
-            for (String element : elements) {
-                if (StringUtils.isNotEmpty(element)) {
-                    File file = new File(element);
-                    if (!file.exists()) {
-                        continue;
-                    }
-                    if (file.isFile()) {
-                        writeFile(file, new Path(file.getPath()), true, true, target, fDirectories);
-                    } else if (file.isDirectory()) {
-                        writeFileRecursively(file, target, fDirectories, file.getAbsolutePath().length() + 1);
-                    }
+            for (ClassPath source : sources) {
+                File file = new File(source.source);
+                if (!file.exists()) {
+                    continue;
                 }
+                writeFile(file, new Path(source.destination), true, true, target, fDirectories);
             }
             target.close();
         } catch (Exception e) {

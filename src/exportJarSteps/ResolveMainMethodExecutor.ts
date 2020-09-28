@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
+
 import _ = require("lodash");
-import { EOL } from "os";
 import { Disposable, ProgressLocation, QuickInputButtons, QuickPickItem, window } from "vscode";
 import { ExportJarStep } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";

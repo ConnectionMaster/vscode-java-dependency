@@ -1,9 +1,11 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-import { sep } from "path";
+import { lstatSync } from "fs";
+import { dirname, sep } from "path";
+import * as upath from "upath";
 import { Uri } from "vscode";
-
 export class PathTrie {
     private root: PathTrieNode;
 
@@ -13,9 +15,8 @@ export class PathTrie {
 
     public insert(input: string): void {
         let currentNode: PathTrieNode = this.root;
-        const fsPath: string = Uri.parse(input).fsPath;
+        const fsPath: string = Uri.file(input).fsPath;
         const segments: string[] = fsPath.split(sep);
-
         for (const segment of segments) {
             if (!segment) {
                 continue;
@@ -25,17 +26,25 @@ export class PathTrie {
             }
             currentNode = currentNode.children[segment];
         }
-
-        currentNode.value = input;
+        try {
+            currentNode.value = (lstatSync(input).isDirectory()) ?
+                input : upath.normalizeSafe(dirname(input));
+        } catch (e) {
+            currentNode.value = input;
+            return;
+        }
     }
 
-    public find(fsPath: string): PathTrieNode | undefined {
+    public find(fsPath: string): string | undefined {
         let currentNode = this.root;
         const segments: string[] = fsPath.split(sep);
 
         for (const segment of segments) {
             if (!segment) {
                 continue;
+            }
+            if (currentNode.value) {
+                return currentNode.value;
             }
             if (currentNode.children[segment]) {
                 currentNode = currentNode.children[segment];
@@ -44,7 +53,7 @@ export class PathTrie {
             }
         }
 
-        return currentNode;
+        return currentNode.value;
     }
 }
 

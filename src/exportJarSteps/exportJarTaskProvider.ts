@@ -1,20 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
-import glob = require("glob-all");
+
 import globby = require("globby");
 import _ = require("lodash");
-import { extname, isAbsolute, join, normalize, posix } from "path";
+import { extname, isAbsolute, join } from "path";
 import * as upath from "upath";
 import {
     CustomExecution, Event, EventEmitter, Extension, extensions, Pseudoterminal,
-    Task, TaskDefinition, TaskProvider, TaskRevealKind, TerminalDimensions, Uri, workspace, WorkspaceFolder,
+    Task, TaskDefinition, TaskFilter, TaskProvider, TaskRevealKind, tasks, TerminalDimensions, Uri, workspace, WorkspaceFolder,
 } from "vscode";
 import { createJarFile } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";
 import { INodeData } from "../java/nodeData";
 import { IClasspathResult } from "./GenerateJarExecutor";
-import { IStepMetadata } from "./IStepMetadata";
-import { COMPILE_OUTPUT, RUNTIME_DEPENDENCIES_VARIABLE, TEST_DEPENDENCIES_VARIABLE, TESTCOMPILE_OUTPUT } from "./utility";
+import { IClassPaths, IStepMetadata } from "./IStepMetadata";
+import { PathTrie } from "./PathTrie";
+import { COMPILE_OUTPUT, RUNTIME_DEPENDENCIES_VARIABLE, TEST_DEPENDENCIES_VARIABLE, TESTCOMPILE_OUTPUT, SETTING_ASKUSER, failMessage, IMessageOption } from "./utility";
 
 export class ExportJarTaskProvider implements TaskProvider {
 
@@ -28,7 +29,7 @@ export class ExportJarTaskProvider implements TaskProvider {
             elements: [],
             mainMethod: undefined,
         };
-        const task: Task = new Task(defaultDefinition, stepMetadata.workspaceFolder, "export", ExportJarTaskProvider.exportJarType,
+        const task: Task = new Task(defaultDefinition, stepMetadata.workspaceFolder, "DEFAULT_EXPORT", ExportJarTaskProvider.exportJarType,
             new CustomExecution(async (resolvedDefinition: TaskDefinition): Promise<Pseudoterminal> => {
                 return new ExportJarTaskTerminal(resolvedDefinition, stepMetadata);
             }));
@@ -36,22 +37,17 @@ export class ExportJarTaskProvider implements TaskProvider {
         return task;
     }
 
-    private tasks: Task[] | undefined;
+    private savedTasks: Task[] | undefined;
 
     public async resolveTask(_task: Task): Promise<Task> {
-        const definition: IExportJarTaskDefinition = <any>_task.definition;
-        let folder: WorkspaceFolder;
-        for (const subFolder of workspace.workspaceFolders) {
-            if (subFolder.uri.fsPath === definition.workspacePath) {
-                folder = subFolder;
-            }
-        }
+        const definition: IExportJarTaskDefinition = <IExportJarTaskDefinition>_task.definition;
+        const folder: WorkspaceFolder = <WorkspaceFolder>_task.scope;
         const stepMetadata: IStepMetadata = {
             entry: undefined,
             workspaceFolder: folder,
             steps: [],
         };
-        const task: Task = new Task(definition, folder, definition.workspacePath, ExportJarTaskProvider.exportJarType,
+        const task: Task = new Task(definition, folder, _task.name, ExportJarTaskProvider.exportJarType,
             new CustomExecution(async (resolvedDefinition: TaskDefinition): Promise<Pseudoterminal> => {
                 return new ExportJarTaskTerminal(resolvedDefinition, stepMetadata);
             }));
@@ -60,19 +56,19 @@ export class ExportJarTaskProvider implements TaskProvider {
     }
 
     public async provideTasks(): Promise<Task[]> {
-        if (this.tasks !== undefined) {
-            return this.tasks;
+        if (this.savedTasks !== undefined) {
+            return this.savedTasks;
         }
-        this.tasks = [];
+        this.savedTasks = [];
         for (const folder of workspace.workspaceFolders) {
-            const projectList: INodeData[] = await Jdtls.getProjects(Uri.parse(folder.uri.toString()).toString());
+            const projectList: INodeData[] = await Jdtls.getProjects(folder.uri.toString());
             const outputList: string[] = [];
             if (_.isEmpty(projectList)) {
                 continue;
             } else {
                 for (const project of projectList) {
-                    outputList.push("${" + COMPILE_OUTPUT + ":" + project.name + "}\\**");
-                    outputList.push("${" + TESTCOMPILE_OUTPUT + ":" + project.name + "}\\**");
+                    outputList.push("${" + COMPILE_OUTPUT + ":" + project.name + "}");
+                    outputList.push("${" + TESTCOMPILE_OUTPUT + ":" + project.name + "}");
                 }
             }
             outputList.push(RUNTIME_DEPENDENCIES_VARIABLE);
@@ -80,7 +76,6 @@ export class ExportJarTaskProvider implements TaskProvider {
             const defaultDefinition: IExportJarTaskDefinition = {
                 type: ExportJarTaskProvider.exportJarType,
                 elements: outputList,
-                workspacePath: folder.uri.fsPath,
                 mainMethod: "",
                 // tslint:disable-next-line: no-invalid-template-strings
                 targetPath: "${workspaceFolder}/${workspaceFolderBasename}.jar",
@@ -91,18 +86,19 @@ export class ExportJarTaskProvider implements TaskProvider {
                 projectList: await Jdtls.getProjects(folder.uri.toString()),
                 steps: [],
             };
-            this.tasks.push(new Task(defaultDefinition, folder, folder.name,
+            const defaultTask: Task = new Task(defaultDefinition, folder, folder.name,
                 ExportJarTaskProvider.exportJarType, new CustomExecution(async (resolvedDefinition: TaskDefinition): Promise<Pseudoterminal> => {
                     return new ExportJarTaskTerminal(resolvedDefinition, stepMetadata);
-                })));
+                }));
+            defaultTask.presentationOptions.reveal = TaskRevealKind.Never;
+            this.savedTasks.push(defaultTask);
         }
-        return this.tasks;
+        return this.savedTasks;
     }
 
 }
 
 interface IExportJarTaskDefinition extends TaskDefinition {
-    workspacePath?: string;
     elements?: string[];
     mainMethod?: string;
     targetPath?: string;
@@ -126,14 +122,22 @@ class ExportJarTaskTerminal implements Pseudoterminal {
     }
 
     public async open(initialDimensions: TerminalDimensions | undefined): Promise<void> {
+        const projectList: INodeData[] = await Jdtls.getProjects(this.stepMetadata.workspaceFolder.uri.toString());
+        if (_.isEmpty(projectList)) {
+            failMessage("No java project found. Please make sure your Java project exists in the workspace.");
+            return;
+        }
         if (_.isEmpty(this.stepMetadata.outputPath)) {
-            this.stepMetadata.outputPath = workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder");
+            if (workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder") === SETTING_ASKUSER) {
+                this.stepMetadata.outputPath = SETTING_ASKUSER;
+            } else {
+                this.stepMetadata.outputPath = join(this.stepMetadata.workspaceFolder.uri.fsPath, this.stepMetadata.workspaceFolder.name + ".jar");
+            }
         }
         if (!_.isEmpty(this.stepMetadata.elements)) {
             const dependencies: string[] = [];
             const extension: Extension<any> | undefined = extensions.getExtension("redhat.java");
             const extensionApi: any = await extension?.activate();
-            const projectList: INodeData[] = await Jdtls.getProjects(Uri.parse(this.stepMetadata.workspaceFolder.uri.toString()).toString());
             const runtimeDependencies: string[] = [];
             const testDependencies: string[] = [];
             const classPathMap: Map<string, string[]> = new Map<string, string[]>();
@@ -184,19 +188,46 @@ class ExportJarTaskTerminal implements Pseudoterminal {
                         dependencies.push(upath.normalizeSafe(dependency));
                     }
                 } else {
+                    let hasVariable: boolean = false;
                     for (const key of classPathMap.keys()) {
                         if (element.includes(key)) {
+                            hasVariable = true;
                             for (const value of classPathMap.get(key)) {
                                 classPathArray.push(upath.normalizeSafe(this.toAbsolute(element.replace(key, value))));
                             }
                         }
                     }
-                    classPathArray.push(upath.normalizeSafe(this.toAbsolute(element)));
+                    if (hasVariable === false) {
+                        classPathArray.push(upath.normalizeSafe(this.toAbsolute(element)));
+                    }
                 }
             }
-            this.stepMetadata.elements = await globby(classPathArray);
+            const trie: PathTrie = new PathTrie();
+            const fsPathArray: string[] = [];
+            for (const classPath of classPathArray) {
+                if (classPath.length > 0 && classPath[0] != "!") {
+                    const fsPathPosix = upath.normalizeSafe(Uri.file(classPath).fsPath);
+                    fsPathArray.push(fsPathPosix);
+                    trie.insert(fsPathPosix);
+                } else {
+                    fsPathArray.push(classPath);
+                }
+            }
+            const globs: string[] = await globby(fsPathArray);
+            const sources: IClassPaths[] = [];
+            for (const glob of globs) {
+                const tireResult: string = trie.find(Uri.file(glob).fsPath);
+                if (!_.isEmpty(tireResult)) {
+                    const classpath: IClassPaths = {
+                        source: glob,
+                        destination: glob.substring(tireResult.length + 1),
+                    }
+                    sources.push(classpath);
+                }
+                
+            }
+            this.stepMetadata.sources = sources;
             this.stepMetadata.dependencies = await globby(dependencies);
-            const test = 1;
         }
         await createJarFile(this.stepMetadata);
         this.closeEmitter.fire();

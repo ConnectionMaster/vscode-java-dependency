@@ -28,7 +28,7 @@ export namespace Jdtls {
         return commands.executeCommand(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.JAVA_PROJECT_GETMAINMETHOD, params);
     }
 
-    export function exportJar(mainMethod: string, elements: string[], dependencies: string[],
+    export function exportJar(mainMethod: string, elements: IClassPaths[], dependencies: string[],
                               destination: string): Thenable<boolean> {
         return commands.executeCommand(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.JAVA_PROJECT_GENERATEJAR,
             mainMethod, elements, dependencies, destination);

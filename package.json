@@ -381,10 +381,6 @@
       {
         "type": "exportjar",
         "properties": {
-          "workspacePath": {
-            "type": "string",
-            "description": "The workspace folder of export jar task."
-          },
           "elements": {
             "type": "array",
             "description": "The files of export jar task. Will dismiss the select elements step."

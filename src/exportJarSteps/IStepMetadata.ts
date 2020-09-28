@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-import { EventEmitter, Uri, WorkspaceFolder } from "vscode";
+import { WorkspaceFolder } from "vscode";
 import { ExportJarStep } from "../exportJarFileCommand";
 import { INodeData } from "../java/nodeData";
 
@@ -11,6 +11,7 @@ export interface IStepMetadata {
     projectList?: INodeData[];
     mainMethod?: string;
     elements?: string[];
+    sources?: IClassPaths[];
     dependencies?: string[];
     outputPath?: string;
     steps: ExportJarStep[];

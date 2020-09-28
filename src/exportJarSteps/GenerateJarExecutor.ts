@@ -29,7 +29,7 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
 
     private async generateJar(stepMetadata: IStepMetadata): Promise<boolean> {
         if (_.isEmpty(stepMetadata.elements)) {
-            stepMetadata.elements = [];
+            stepMetadata.sources = [];
             stepMetadata.dependencies = [];
             if (!(await this.generateElements(stepMetadata))) {
                 return false;
@@ -61,7 +61,7 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
                     };
                     return reject(new ErrorWithHandler("Invalid target folder. Please check it in settings.json.", option));
                 }
-                const exportResult = await Jdtls.exportJar(basename(stepMetadata.mainMethod), stepMetadata.elements,
+                const exportResult = await Jdtls.exportJar(basename(stepMetadata.mainMethod), stepMetadata.sources,
                     stepMetadata.dependencies, destPath);
                 if (exportResult === true) {
                     stepMetadata.outputPath = destPath;
@@ -102,7 +102,7 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
         if (_.isEmpty(dependencyItems)) {
             throw new Error("No classpath found. Please make sure your java project is valid.");
         } else if (dependencyItems.length === 1) {
-            stepMetadata.elements.push(dependencyItems[0].path);
+            stepMetadata.dependencies.push(dependencyItems[0].path);
             return true;
         }
         dependencyItems.sort((node1, node2) => {

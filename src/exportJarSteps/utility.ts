@@ -49,6 +49,7 @@ export function cleanLastStepData(lastStep: ExportJarStep, stepMetadata: IStepMe
 export interface IMessageOption {
     title: string;
     command: string;
+    arguments?: any;
 }
 
 export class ErrorWithHandler extends Error {
@@ -66,7 +67,11 @@ export function failMessage(message: string, option?: IMessageOption) {
     } else {
         window.showErrorMessage(message, option.title, "Done").then((result) => {
             if (result === option.title) {
-                commands.executeCommand(option.command);
+                if (option.arguments === undefined) {
+                    commands.executeCommand(option.command);
+                } else {
+                    commands.executeCommand(option.command, ...option.arguments);
+                }
             }
         });
     }

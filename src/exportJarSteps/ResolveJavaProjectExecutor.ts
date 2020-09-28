@@ -7,7 +7,6 @@ import { ExportJarStep } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";
 import { INodeData } from "../java/nodeData";
 import { WorkspaceNode } from "../views/workspaceNode";
-import { ExportJarTaskProvider } from "./ExportJarTaskProvider";
 import { IExportJarStepExecutor } from "./IExportJarStepExecutor";
 import { IStepMetadata } from "./IStepMetadata";
 import { createPickBox } from "./utility";
