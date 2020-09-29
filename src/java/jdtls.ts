@@ -3,6 +3,7 @@
 
 import { commands } from "vscode";
 import { Commands, executeJavaLanguageServerCommand } from "../commands";
+import { IExportResult } from "../exportJarSteps/GenerateJarExecutor";
 import { IClassPaths } from "../exportJarSteps/IStepMetadata";
 import { MainMethodInfo } from "../exportJarSteps/ResolveMainMethodExecutor";
 import { INodeData } from "./nodeData";
@@ -29,7 +30,7 @@ export namespace Jdtls {
     }
 
     export function exportJar(mainMethod: string, elements: IClassPaths[], dependencies: string[],
-                              destination: string): Thenable<boolean> {
+                              destination: string): Thenable<IExportResult> {
         return commands.executeCommand(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.JAVA_PROJECT_GENERATEJAR,
             mainMethod, elements, dependencies, destination);
     }

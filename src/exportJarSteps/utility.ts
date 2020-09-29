@@ -9,8 +9,8 @@ import { IStepMetadata } from "./IStepMetadata";
 
 export const SETTING_ASKUSER: string = "askUser";
 // tslint:disable: no-invalid-template-strings
-export const RUNTIME_DEPENDENCIES_VARIABLE: string = "${RuntimeDependencies}";
-export const TEST_DEPENDENCIES_VARIABLE: string = "${TestDependencies}";
+export const RUNTIME_DEPENDENCIES: string = "RuntimeDependencies";
+export const TEST_DEPENDENCIES: string = "TestDependencies";
 export const COMPILE_OUTPUT: string = "CompileOutput";
 export const TESTCOMPILE_OUTPUT: string = "TestCompileOutput";
 

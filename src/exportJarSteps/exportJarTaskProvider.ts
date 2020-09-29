@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-import globby = require("globby");
-import _ = require("lodash");
+import * as globby from "globby";
+import * as _ from "lodash";
 import { extname, isAbsolute, join } from "path";
 import * as upath from "upath";
 import {
     CustomExecution, Event, EventEmitter, Extension, extensions, Pseudoterminal,
-    Task, TaskDefinition, TaskFilter, TaskProvider, TaskRevealKind, tasks, TerminalDimensions, Uri, workspace, WorkspaceFolder,
+    Task, TaskDefinition, TaskProvider, TaskRevealKind, TerminalDimensions,
+    Uri, workspace, WorkspaceFolder,
 } from "vscode";
 import { createJarFile } from "../exportJarFileCommand";
 import { Jdtls } from "../java/jdtls";
@@ -15,7 +16,7 @@ import { INodeData } from "../java/nodeData";
 import { IClasspathResult } from "./GenerateJarExecutor";
 import { IClassPaths, IStepMetadata } from "./IStepMetadata";
 import { PathTrie } from "./PathTrie";
-import { COMPILE_OUTPUT, RUNTIME_DEPENDENCIES_VARIABLE, TEST_DEPENDENCIES_VARIABLE, TESTCOMPILE_OUTPUT, SETTING_ASKUSER, failMessage, IMessageOption } from "./utility";
+import { COMPILE_OUTPUT, RUNTIME_DEPENDENCIES, TEST_DEPENDENCIES, TESTCOMPILE_OUTPUT, SETTING_ASKUSER, failMessage } from "./utility";
 
 export class ExportJarTaskProvider implements TaskProvider {
 
@@ -65,14 +66,17 @@ export class ExportJarTaskProvider implements TaskProvider {
             const outputList: string[] = [];
             if (_.isEmpty(projectList)) {
                 continue;
+            } else if (projectList.length === 1) {
+                outputList.push("${" + COMPILE_OUTPUT + "}");
+                outputList.push("${" + TESTCOMPILE_OUTPUT + "}");
             } else {
                 for (const project of projectList) {
                     outputList.push("${" + COMPILE_OUTPUT + ":" + project.name + "}");
                     outputList.push("${" + TESTCOMPILE_OUTPUT + ":" + project.name + "}");
                 }
             }
-            outputList.push(RUNTIME_DEPENDENCIES_VARIABLE);
-            outputList.push(TEST_DEPENDENCIES_VARIABLE);
+            outputList.push("${" + RUNTIME_DEPENDENCIES + "}");
+            outputList.push("${" + TEST_DEPENDENCIES + "}");
             const defaultDefinition: IExportJarTaskDefinition = {
                 type: ExportJarTaskProvider.exportJarType,
                 elements: outputList,
@@ -141,6 +145,7 @@ class ExportJarTaskTerminal implements Pseudoterminal {
             const runtimeDependencies: string[] = [];
             const testDependencies: string[] = [];
             const classPathMap: Map<string, string[]> = new Map<string, string[]>();
+            const testClassPathMap: Map<string, string[]> = new Map<string, string[]>();
             for (const project of projectList) {
                 const classPaths: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "runtime" });
                 const classPathsResolved: string[] = [];
@@ -158,7 +163,7 @@ class ExportJarTaskTerminal implements Pseudoterminal {
                         classPathsResolved.push(classpath);
                     }
                 }
-                classPathMap.set("${" + COMPILE_OUTPUT + ":" + project.name + "}", classPathsResolved);
+                classPathMap.set(project.name, classPathsResolved);
                 const testClassPaths: IClasspathResult = await extensionApi.getClasspaths(project.uri, { scope: "test" });
                 const testClassPathsResolved: string[] = [];
                 for (const classpath of testClassPaths.classpaths) {
@@ -175,30 +180,58 @@ class ExportJarTaskTerminal implements Pseudoterminal {
                         testClassPathsResolved.push(classpath);
                     }
                 }
-                classPathMap.set("${" + TESTCOMPILE_OUTPUT + ":" + project.name + "}", testClassPathsResolved);
+                testClassPathMap.set(project.name, testClassPathsResolved);
             }
             const classPathArray: string[] = [];
+            const regExp = new RegExp("\\${(.*)}");
             for (const element of this.stepMetadata.elements) {
-                if (element === RUNTIME_DEPENDENCIES_VARIABLE) {
+                const variableResult = element.match(regExp);
+                if (variableResult === null || variableResult.length <= 1) {
+                    classPathArray.push(upath.normalizeSafe(this.toAbsolute(element)));
+                    continue;
+                }
+                if (variableResult[1] === RUNTIME_DEPENDENCIES) {
                     for (const dependency of runtimeDependencies) {
                         dependencies.push(upath.normalizeSafe(dependency));
                     }
-                } else if (element === TEST_DEPENDENCIES_VARIABLE) {
+                } else if (variableResult[1] === TEST_DEPENDENCIES) {
                     for (const dependency of testDependencies) {
                         dependencies.push(upath.normalizeSafe(dependency));
                     }
                 } else {
-                    let hasVariable: boolean = false;
-                    for (const key of classPathMap.keys()) {
-                        if (element.includes(key)) {
-                            hasVariable = true;
-                            for (const value of classPathMap.get(key)) {
-                                classPathArray.push(upath.normalizeSafe(this.toAbsolute(element.replace(key, value))));
+                    const splitResult: string[] = variableResult[1].split(":");
+                    if (splitResult[0] === COMPILE_OUTPUT) {
+                        if (splitResult.length === 1) {
+                            for (const values of classPathMap.values()) {
+                                for (const value of values) {
+                                    classPathArray.push(this.toAbsolute(variableResult.input.replace(variableResult[0], value)));
+                                }
+                            }
+                        } else if (splitResult.length === 2) {
+                            for (const entry of classPathMap.entries()) {
+                                if (entry[0] === splitResult[1]) {
+                                    for (const value of entry[1]) {
+                                        classPathArray.push(this.toAbsolute(variableResult.input.replace(variableResult[0], value)));
+                                    }
+                                }
                             }
                         }
-                    }
-                    if (hasVariable === false) {
-                        classPathArray.push(upath.normalizeSafe(this.toAbsolute(element)));
+                    } else if (splitResult[0] === TESTCOMPILE_OUTPUT) {
+                        if (splitResult.length === 1) {
+                            for (const values of testClassPathMap.values()) {
+                                for (const value of values) {
+                                    classPathArray.push(this.toAbsolute(variableResult.input.replace(variableResult[0], value)));
+                                }
+                            }
+                        } else if (splitResult.length === 2) {
+                            for (const entry of testClassPathMap.entries()) {
+                                if (entry[0] === splitResult[1]) {
+                                    for (const value of entry[1]) {
+                                        classPathArray.push(this.toAbsolute(variableResult.input.replace(variableResult[0], value)));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -210,7 +243,8 @@ class ExportJarTaskTerminal implements Pseudoterminal {
                     fsPathArray.push(fsPathPosix);
                     trie.insert(fsPathPosix);
                 } else {
-                    fsPathArray.push(classPath);
+                    const realPath = classPath.substring(1);
+                    fsPathArray.push("!" + upath.normalizeSafe(Uri.file(realPath).fsPath));
                 }
             }
             const globs: string[] = await globby(fsPathArray);
@@ -224,7 +258,7 @@ class ExportJarTaskTerminal implements Pseudoterminal {
                     }
                     sources.push(classpath);
                 }
-                
+
             }
             this.stepMetadata.sources = sources;
             this.stepMetadata.dependencies = await globby(dependencies);

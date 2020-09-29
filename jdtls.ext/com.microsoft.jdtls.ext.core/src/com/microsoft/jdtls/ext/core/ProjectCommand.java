@@ -49,6 +49,7 @@ import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.search.IJavaSearchConstants;
 import org.eclipse.jdt.core.search.SearchRequestor;
+import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.eclipse.jdt.core.search.SearchParticipant;
 import org.eclipse.jdt.launching.JavaRuntime;
@@ -81,6 +82,23 @@ public final class ProjectCommand {
     private static class ClassPath {
         public String source;
         public String destination;
+    }
+
+    private static class exportResult {
+        public boolean result;
+        public String message;
+        public String log;
+
+        exportResult(boolean result) {
+            this.result = result;
+            this.log = "";
+        }
+
+        exportResult(boolean result, String message) {
+            this.result = result;
+            this.message = message;
+            this.log = "";
+        }
     }
 
     private static final Gson gson = new GsonBuilder().registerTypeAdapterFactory(new CollectionTypeAdapter.Factory())
@@ -132,22 +150,22 @@ public final class ProjectCommand {
         return ResourcesPlugin.getWorkspace().getRoot();
     }
 
-    public static boolean exportJar(List<Object> arguments, IProgressMonitor monitor) {
+    public static exportResult exportJar(List<Object> arguments, IProgressMonitor monitor) {
         if (arguments.size() < 4) {
-            return false;
+            return new exportResult(false, "Invalid export Arguments");
         }
         String mainMethod = gson.fromJson(gson.toJson(arguments.get(0)), String.class);
         ClassPath[] sources = gson.fromJson(gson.toJson(arguments.get(1)), ClassPath[].class);
         String[] dependencies = gson.fromJson(gson.toJson(arguments.get(2)), String[].class);
         String destination = gson.fromJson(gson.toJson(arguments.get(3)), String.class);
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        if (mainMethod.length() > 0) {
+            manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainMethod);
+        }
         try {
-            Manifest manifest = new Manifest();
-            manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-            if (mainMethod.length() > 0) {
-                manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainMethod);
-            }
             JarOutputStream target = new JarOutputStream(new FileOutputStream(destination), manifest);
-            Set<String> fDirectories = new HashSet<>();
+            Set<String> directories = new HashSet<>();
             for (String dependency : dependencies) {
                 if (StringUtils.isNotEmpty(dependency)) {
                     File file = new File(dependency);
@@ -156,33 +174,37 @@ public final class ProjectCommand {
                     }
                     if (dependency.endsWith(".jar")) {
                         ZipFile zip = new ZipFile(dependency);
-                        writeArchive(zip, true, true, target, fDirectories, monitor);
+                        writeArchive(zip, true, true, target, directories, monitor);
                     } else {
-                        writeFileRecursively(file, target, fDirectories, file.getAbsolutePath().length() + 1);
+                        writeFileRecursively(file, target, directories, file.getAbsolutePath().length() + 1);
                     }
                 }
             }
-            for (ClassPath source : sources) {
-                File file = new File(source.source);
-                if (!file.exists()) {
-                    continue;
-                }
-                writeFile(file, new Path(source.destination), true, true, target, fDirectories);
-            }
+            writeFileFromSources(sources, target, directories);
             target.close();
         } catch (Exception e) {
-            return false;
+            return new exportResult(false, e.getMessage());
         }
-        return true;
+        return new exportResult(true);
     }
 
-    private static void writeFileRecursively(File source, JarOutputStream fJarOutputStream, Set<String> fDirectories, int len) throws CoreException {
+    private static void writeFileFromSources(ClassPath[] sources, JarOutputStream jarOutputStream, Set<String> directories) {
+        for (ClassPath source : sources) {
+            try {
+                writeFile(new File(source.source), new Path(source.destination), true, true, jarOutputStream, directories);
+            } catch (Exception e) {
+                // Do nothing
+            }
+        }
+    }
+
+    private static void writeFileRecursively(File source, JarOutputStream jarOutputStream, Set<String> directories, int len) throws CoreException {
         File[] files = source.listFiles();
         for (File file : files) {
             if (file.isDirectory()) {
-                writeFileRecursively(file, fJarOutputStream, fDirectories, len);
+                writeFileRecursively(file, jarOutputStream, directories, len);
             } else if (file.isFile()) {
-                writeFile(file, new Path(file.getAbsolutePath().substring(len)), true, true, fJarOutputStream, fDirectories);
+                writeFile(file, new Path(file.getAbsolutePath().substring(len)), true, true, jarOutputStream, directories);
             }
         }
     }

@@ -61,13 +61,13 @@ export class GenerateJarExecutor implements IExportJarStepExecutor {
                     };
                     return reject(new ErrorWithHandler("Invalid target folder. Please check it in settings.json.", option));
                 }
-                const exportResult = await Jdtls.exportJar(basename(stepMetadata.mainMethod), stepMetadata.sources,
+                const exportResult: IExportResult = await Jdtls.exportJar(basename(stepMetadata.mainMethod), stepMetadata.sources,
                     stepMetadata.dependencies, destPath);
-                if (exportResult === true) {
+                if (exportResult.result === true) {
                     stepMetadata.outputPath = destPath;
                     return resolve(true);
                 } else {
-                    return reject(new Error("Export jar failed."));
+                    return reject(new Error("Export jar failed." + exportResult.message));
                 }
             });
         });
@@ -190,4 +190,9 @@ export interface IClasspathResult {
 interface IJarQuickPickItem extends QuickPickItem {
     path: string;
     type: string;
+}
+
+export interface IExportResult {
+    result: boolean;
+    message: string;
 }
