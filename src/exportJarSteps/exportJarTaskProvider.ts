@@ -16,7 +16,7 @@ import { INodeData } from "../java/nodeData";
 import { IClasspathResult } from "./GenerateJarExecutor";
 import { IClassPaths, IStepMetadata } from "./IStepMetadata";
 import { PathTrie } from "./PathTrie";
-import { COMPILE_OUTPUT, RUNTIME_DEPENDENCIES, TEST_DEPENDENCIES, TESTCOMPILE_OUTPUT, SETTING_ASKUSER, failMessage } from "./utility";
+import { COMPILE_OUTPUT, RUNTIME_DEPENDENCIES, SETTING_ASKUSER, TEST_DEPENDENCIES, TESTCOMPILE_OUTPUT, failMessage } from "./utility";
 
 export class ExportJarTaskProvider implements TaskProvider {
 
@@ -132,11 +132,8 @@ class ExportJarTaskTerminal implements Pseudoterminal {
             return;
         }
         if (_.isEmpty(this.stepMetadata.outputPath)) {
-            if (workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder") === SETTING_ASKUSER) {
-                this.stepMetadata.outputPath = SETTING_ASKUSER;
-            } else {
-                this.stepMetadata.outputPath = join(this.stepMetadata.workspaceFolder.uri.fsPath, this.stepMetadata.workspaceFolder.name + ".jar");
-            }
+            this.stepMetadata.outputPath = (workspace.getConfiguration("java.dependency.exportjar").get<string>("defaultTargetFolder") === SETTING_ASKUSER) ?
+                SETTING_ASKUSER : join(this.stepMetadata.workspaceFolder.uri.fsPath, this.stepMetadata.workspaceFolder.name + ".jar");
         }
         if (!_.isEmpty(this.stepMetadata.elements)) {
             const dependencies: string[] = [];
@@ -183,7 +180,7 @@ class ExportJarTaskTerminal implements Pseudoterminal {
                 testClassPathMap.set(project.name, testClassPathsResolved);
             }
             const classPathArray: string[] = [];
-            const regExp = new RegExp("\\${(.*)}");
+            const regExp: RegExp = new RegExp("\\${(.*)}");
             for (const element of this.stepMetadata.elements) {
                 const variableResult = element.match(regExp);
                 if (variableResult === null || variableResult.length <= 1) {
@@ -238,7 +235,7 @@ class ExportJarTaskTerminal implements Pseudoterminal {
             const trie: PathTrie = new PathTrie();
             const fsPathArray: string[] = [];
             for (const classPath of classPathArray) {
-                if (classPath.length > 0 && classPath[0] != "!") {
+                if (classPath.length > 0 && classPath[0] !== "!") {
                     const fsPathPosix = upath.normalizeSafe(Uri.file(classPath).fsPath);
                     fsPathArray.push(fsPathPosix);
                     trie.insert(fsPathPosix);
@@ -255,7 +252,7 @@ class ExportJarTaskTerminal implements Pseudoterminal {
                     const classpath: IClassPaths = {
                         source: glob,
                         destination: glob.substring(tireResult.length + 1),
-                    }
+                    };
                     sources.push(classpath);
                 }
 
