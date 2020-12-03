@@ -3,16 +3,16 @@
 
 import * as fse from "fs-extra";
 import * as path from "path";
-import { commands, Disposable, ExtensionContext, TextEditor, TreeView, TreeViewVisibilityChangeEvent, Uri, window } from "vscode";
+import { commands, Disposable, ExtensionContext, extensions, TextEditor, TreeView, TreeViewVisibilityChangeEvent, Uri, window } from "vscode";
 import { instrumentOperationAsVsCodeCommand } from "vscode-extension-telemetry-wrapper";
 import { Commands } from "../commands";
 import { Build } from "../constants";
 import { deleteFiles } from "../explorerCommands/delete";
 import { renameFile } from "../explorerCommands/rename";
 import { getCmdNode } from "../explorerCommands/utility";
-import { isStandardServerReady } from "../extension";
 import { Jdtls } from "../java/jdtls";
 import { INodeData } from "../java/nodeData";
+import { languageServerApiManager } from "../languageServerApi/languageServerApiManager";
 import { Settings } from "../settings";
 import { DataNode } from "./dataNode";
 import { DependencyDataProvider } from "./dependencyDataProvider";
@@ -29,6 +29,8 @@ export class DependencyExplorer implements Disposable {
     }
 
     private static _instance: DependencyExplorer;
+
+    private _revealingUri: string;
 
     private _dependencyViewer: TreeView<ExplorerNode>;
 
@@ -133,9 +135,14 @@ export class DependencyExplorer implements Disposable {
     }
 
     public async reveal(uri: Uri): Promise<void> {
-        if (!isStandardServerReady()) {
+        if (!await languageServerApiManager.isStandardServerReady()) {
             return;
         }
+
+        if (this._revealingUri && this._revealingUri === uri.toString()) {
+            return;
+        }
+        this._revealingUri = uri.toString();
 
         let node: DataNode | undefined = explorerNodeCache.getDataNode(uri);
         if (!node) {

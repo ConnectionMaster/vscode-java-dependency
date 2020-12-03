@@ -62,13 +62,14 @@ export abstract class DataNode extends ExplorerNode {
     }
 
     public async getChildren(): Promise<ExplorerNode[]> {
+        if (this._nodeData.children) {
+            return this.createChildNodeList();
+        }
+
         try {
             await this._lock.acquire();
-            if (!this._nodeData.children) {
-                const data = await this.loadData();
-                this._nodeData.children = data;
-                return this.createChildNodeList();
-            }
+            const data = await this.loadData();
+            this._nodeData.children = data;
             return this.createChildNodeList();
         } finally {
             this._lock.release();
