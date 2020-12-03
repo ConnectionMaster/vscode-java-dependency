@@ -3,7 +3,7 @@
 
 import * as fse from "fs-extra";
 import * as path from "path";
-import { commands, Disposable, ExtensionContext, extensions, TextEditor, TreeView, TreeViewVisibilityChangeEvent, Uri, window } from "vscode";
+import { commands, Disposable, ExtensionContext, TextEditor, TreeView, TreeViewVisibilityChangeEvent, Uri, window } from "vscode";
 import { instrumentOperationAsVsCodeCommand } from "vscode-extension-telemetry-wrapper";
 import { Commands } from "../commands";
 import { Build } from "../constants";
