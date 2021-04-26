@@ -3,15 +3,13 @@
 
 import * as _ from "lodash";
 import { ThemeIcon, TreeItem, TreeItemCollapsibleState, Uri } from "vscode";
-import { INodeData } from "../java/nodeData";
-import { Lock } from "../utils/Lock";
+import { INodeData, NodeKind } from "../java/nodeData";
+import { explorerLock } from "../utils/Lock";
 import { ExplorerNode } from "./explorerNode";
 
 export abstract class DataNode extends ExplorerNode {
 
     protected _childrenNodes: ExplorerNode[];
-
-    protected _lock: Lock = new Lock();
 
     constructor(protected _nodeData: INodeData, parent?: DataNode) {
         super(parent);
@@ -26,6 +24,18 @@ export abstract class DataNode extends ExplorerNode {
         item.iconPath = this.iconPath;
         item.command = this.command;
         item.contextValue = this.computeContextValue();
+        if (this.uri) {
+            switch (this._nodeData.kind) {
+                case NodeKind.PackageRoot:
+                case NodeKind.Package:
+                case NodeKind.PrimaryType:
+                case NodeKind.Folder:
+                case NodeKind.File:
+                    item.resourceUri = Uri.parse(this.uri);
+                    break;
+            }
+        }
+
         return item;
     }
 
@@ -62,7 +72,7 @@ export abstract class DataNode extends ExplorerNode {
 
     public async getChildren(): Promise<ExplorerNode[]> {
         try {
-            await this._lock.acquire();
+            await explorerLock.acquireAsync();
             if (!this._nodeData.children) {
                 const data = await this.loadData();
                 this._nodeData.children = data;
@@ -71,7 +81,7 @@ export abstract class DataNode extends ExplorerNode {
             }
             return this._childrenNodes;
         } finally {
-            this._lock.release();
+            explorerLock.release();
         }
     }
 

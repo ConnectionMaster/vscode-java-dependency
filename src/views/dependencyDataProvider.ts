@@ -3,18 +3,19 @@
 
 import * as _ from "lodash";
 import {
-    commands, Event, EventEmitter, ExtensionContext, extensions, ProviderResult,
+    commands, Event, EventEmitter, ExtensionContext, ProviderResult,
     RelativePattern, TreeDataProvider, TreeItem, Uri, window, workspace,
 } from "vscode";
 import { instrumentOperation, instrumentOperationAsVsCodeCommand } from "vscode-extension-telemetry-wrapper";
+import { contextManager } from "../../extension.bundle";
 import { Commands } from "../commands";
-import { newJavaClass, newPackage } from "../explorerCommands/new";
+import { Context } from "../constants";
 import { executeExportJarTask } from "../exportJarSteps/ExportJarTaskProvider";
 import { Jdtls } from "../java/jdtls";
 import { INodeData, NodeKind } from "../java/nodeData";
 import { languageServerApiManager } from "../languageServerApi/languageServerApiManager";
 import { Settings } from "../settings";
-import { Lock } from "../utils/Lock";
+import { explorerLock } from "../utils/Lock";
 import { DataNode } from "./dataNode";
 import { ExplorerNode } from "./explorerNode";
 import { explorerNodeCache } from "./nodeCache/explorerNodeCache";
@@ -24,8 +25,6 @@ import { WorkspaceNode } from "./workspaceNode";
 export class DependencyDataProvider implements TreeDataProvider<ExplorerNode> {
 
     private _onDidChangeTreeData: EventEmitter<ExplorerNode | null | undefined> = new EventEmitter<ExplorerNode | null | undefined>();
-
-    private _lock: Lock = new Lock();
 
     // tslint:disable-next-line:member-ordering
     public onDidChangeTreeData: Event<ExplorerNode | null | undefined> = this._onDidChangeTreeData.event;
@@ -39,8 +38,6 @@ export class DependencyDataProvider implements TreeDataProvider<ExplorerNode> {
         context.subscriptions.push(instrumentOperationAsVsCodeCommand(Commands.VIEW_PACKAGE_EXPORT_JAR, async (node: INodeData) => {
             executeExportJarTask(node);
         }));
-        context.subscriptions.push(instrumentOperationAsVsCodeCommand(Commands.VIEW_PACKAGE_NEW_JAVA_CLASS, (node: DataNode) => newJavaClass(node)));
-        context.subscriptions.push(instrumentOperationAsVsCodeCommand(Commands.VIEW_PACKAGE_NEW_JAVA_PACKAGE, (node: DataNode) => newPackage(node)));
         context.subscriptions.push(instrumentOperationAsVsCodeCommand(Commands.VIEW_PACKAGE_OUTLINE, (uri, range) =>
             window.showTextDocument(Uri.parse(uri), { selection: range })));
         context.subscriptions.push(instrumentOperationAsVsCodeCommand(Commands.JAVA_PROJECT_BUILD_WORKSPACE, () =>
@@ -101,11 +98,7 @@ export class DependencyDataProvider implements TreeDataProvider<ExplorerNode> {
             return [];
         }
 
-        if (await languageServerApiManager.isSwitchingServer()) {
-            await new Promise<void>((resolve: () => void): void => {
-                extensions.getExtension("redhat.java")!.exports.onDidServerModeChange(resolve);
-            });
-        }
+        await languageServerApiManager.awaitSwitchingServerFinished();
 
         const children = (!this._rootItems || !element) ?
             await this.getRootNodes() : await element.getChildren();
@@ -126,15 +119,7 @@ export class DependencyDataProvider implements TreeDataProvider<ExplorerNode> {
         return project?.revealPaths(paths);
     }
 
-    private doRefresh(element?: ExplorerNode): void {
-        if (!element) {
-            this._rootItems = undefined;
-        }
-        explorerNodeCache.removeNodeChildren(element);
-        this._onDidChangeTreeData.fire(element);
-    }
-
-    private async getRootProjects(): Promise<ExplorerNode[]> {
+    public async getRootProjects(): Promise<ExplorerNode[]> {
         const rootElements = await this.getRootNodes();
         if (rootElements[0] instanceof ProjectNode) {
             return rootElements;
@@ -150,9 +135,17 @@ export class DependencyDataProvider implements TreeDataProvider<ExplorerNode> {
         }
     }
 
+    private doRefresh(element?: ExplorerNode): void {
+        if (!element) {
+            this._rootItems = undefined;
+        }
+        explorerNodeCache.removeNodeChildren(element);
+        this._onDidChangeTreeData.fire(element);
+    }
+
     private async getRootNodes(): Promise<ExplorerNode[]> {
         try {
-            await this._lock.acquire();
+            await explorerLock.acquireAsync();
 
             if (this._rootItems) {
                 return this._rootItems;
@@ -168,20 +161,18 @@ export class DependencyDataProvider implements TreeDataProvider<ExplorerNode> {
                         kind: NodeKind.Workspace,
                     }, undefined)));
                     this._rootItems = rootItems;
-                    return rootItems;
                 } else {
                     const result: INodeData[] = await Jdtls.getProjects(folders[0].uri.toString());
                     result.forEach((project) => {
                         rootItems.push(new ProjectNode(project, undefined));
                     });
                     this._rootItems = rootItems;
-                    return rootItems;
                 }
-            } else {
-                throw new Error("No workspace folder found, please open a folder into the workspace first.");
             }
+            contextManager.setContextValue(Context.NO_JAVA_PEOJECT, _.isEmpty(rootItems));
+            return rootItems;
         } finally {
-            this._lock.release();
+            explorerLock.release();
         }
     }
 }

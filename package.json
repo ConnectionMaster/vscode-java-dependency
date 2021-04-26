@@ -2,7 +2,7 @@
   "name": "vscode-java-dependency",
   "displayName": "Project Manager for Java",
   "description": "%description%",
-  "version": "0.17.0",
+  "version": "0.18.3",
   "publisher": "vscjava",
   "preview": true,
   "aiKey": "5c642b22-e845-4400-badb-3f8509a70777",
@@ -12,7 +12,7 @@
     "explorer"
   ],
   "engines": {
-    "vscode": "^1.52.0"
+    "vscode": "^1.53.0"
   },
   "repository": {
     "type": "git",
@@ -31,7 +31,7 @@
   "main": "./main.js",
   "contributes": {
     "javaExtensions": [
-      "./server/com.microsoft.jdtls.ext.core-0.17.0.jar"
+      "./server/com.microsoft.jdtls.ext.core-0.18.3.jar"
     ],
     "commands": [
       {
@@ -369,12 +369,12 @@
         },
         {
           "command": "java.view.package.exportJar",
-          "when": "view == javaProjectExplorer && java:serverMode == Standard && workspaceFolderCount != 0",
+          "when": "view == javaProjectExplorer && java:serverMode == Standard && !java:noJavaProjects",
           "group": "navigation@20"
         },
         {
           "command": "java.view.package.refresh",
-          "when": "view == javaProjectExplorer && java:serverMode == Standard",
+          "when": "view == javaProjectExplorer && java:serverMode == Standard && !java:noJavaProjects",
           "group": "navigation@30"
         },
         {
@@ -399,12 +399,12 @@
         },
         {
           "command": "java.project.build.workspace",
-          "when": "view == javaProjectExplorer && java:serverMode == Standard && workspaceFolderCount != 0",
+          "when": "view == javaProjectExplorer && java:serverMode == Standard && !java:noJavaProjects",
           "group": "overflow_20@10"
         },
         {
           "command": "java.project.clean.workspace",
-          "when": "view == javaProjectExplorer && java:serverMode == Standard && workspaceFolderCount != 0",
+          "when": "view == javaProjectExplorer && java:serverMode == Standard && !java:noJavaProjects",
           "group": "overflow_20@20"
         }
       ],
@@ -498,7 +498,7 @@
         {
           "command": "java.project.update",
           "when": "view == javaProjectExplorer && viewItem =~ /java:project(?=.*?\\b\\+uri\\b)(?=.*?\\b\\+(maven|gradle)\\b)/",
-          "group": "9_sync@10"
+          "group": "9_configuration@10"
         }
       ]
     },
@@ -518,6 +518,11 @@
         "view": "explorer",
         "contents": "%viewsWelcome.workbench.createNewJavaProject%",
         "when": "workspaceFolderCount == 0"
+      },
+      {
+        "view": "javaProjectExplorer",
+        "contents": "%viewsWelcome.workbench.noJavaProject%",
+        "when": "java:noJavaProjects"
       },
       {
         "view": "javaProjectExplorer",
@@ -578,30 +583,31 @@
   "devDependencies": {
     "@types/fs-extra": "^5.1.0",
     "@types/glob": "^7.1.3",
-    "@types/lodash": "^4.14.165",
+    "@types/lodash": "^4.14.168",
     "@types/minimatch": "^3.0.3",
-    "@types/mocha": "^8.0.4",
+    "@types/mocha": "^8.2.1",
     "@types/node": "^8.10.66",
-    "@types/vscode": "1.52.0",
-    "copy-webpack-plugin": "^6.3.2",
+    "@types/vscode": "1.53.0",
+    "copy-webpack-plugin": "^6.4.1",
     "glob": "^7.1.6",
     "gulp": "^4.0.2",
     "gulp-copy": "^4.0.1",
     "gulp-tslint": "^8.1.4",
-    "mocha": "^8.2.1",
+    "mocha": "^8.3.1",
     "ts-loader": "^5.4.5",
     "tslint": "^5.20.1",
-    "typescript": "^3.9.7",
-    "vscode-test": "^1.4.1",
-    "webpack": "^4.44.2",
+    "typescript": "^3.9.9",
+    "vscode-test": "^1.5.1",
+    "webpack": "^4.46.0",
     "webpack-cli": "^3.3.12"
   },
   "dependencies": {
+    "await-lock": "^2.1.0",
     "fs-extra": "^7.0.1",
     "globby": "11.0.1",
-    "lodash": "^4.17.20",
+    "lodash": "^4.17.21",
     "minimatch": "^3.0.4",
-    "vscode-extension-telemetry-wrapper": "0.8.0",
-    "vscode-tas-client": "^0.1.17"
+    "vscode-extension-telemetry-wrapper": "0.9.0",
+    "vscode-tas-client": "^0.1.22"
   }
 }
